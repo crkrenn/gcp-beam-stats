@@ -14,13 +14,14 @@ def run_pipeline():
     numbers = p | beam.Create(["numbers.txt"])
 
     (numbers
-      | 'Read' >> ReadAllFromText(skip_header_lines=1)
-      | 'Add keys' >> WithKeys("num")
-      | 'write' >> WriteToText(
-             'numbers_out.txt')
-      )
+        | 'Read' >> ReadAllFromText(skip_header_lines=1)
+        | 'Add keys' >> WithKeys("num")
+        | 'write' >> WriteToText(
+            'numbers_out.txt')
+    )
     result = p.run()
     result.wait_until_finish()
+
 
 if __name__ == '__main__':
     run_pipeline()
