@@ -10,33 +10,38 @@ from utils import (
 
 import google.api_core.exceptions
 
-    # publisher = pubsub_v1.PublisherClient()
-    # subscriber = pubsub_v1.SubscriberClient()
-    # topic_path = publisher.topic_path(project_id, topic_id)
-    # subscription_path = subscriber.subscription_path(project_id, subscription_id)
+from google.cloud import pubsub_v1
 
-    # # Wrap the subscriber in a 'with' block to automatically call close() to
-    # # close the underlying gRPC channel when done.
-    # with subscriber:
-    #     subscription = subscriber.create_subscription(
-    #         name=subscription_path, topic=topic_path)
 
-    # print(f"Subscription created: {subscription}")
-    # # [END pubsub_create_pull_subscription]
+# projects/pubsub-public-data/topics/taxirides-realtime
+project_id_pub = 'pubsub-public-data'
+project_id_sub = os.environ.get('DEVSHELL_PROJECT_ID')
+topic_id = "taxirides-realtime"
+subscription_id = topic_id + "_sub_" + str(uuid.uuid4())
 
-    # subscriber = pubsub_v1.SubscriberClient()
-    # subscription_path = subscriber.subscription_path(project_id, subscription_id)
 
-    # # Wrap the subscriber in a 'with' block to automatically call close() to
-    # # close the underlying gRPC channel when done.
-    # with subscriber:
-    #     subscriber.delete_subscription(request={"subscription": subscription_path})
+def signal_handler(sig, frame):
+    print("deleting subscription.")
+    delete_subscription(project_id_sub, subscription_id)
+    sys.exit(0)
 
-    # print(f"Subscription deleted: {subscription_path}.")
-    # # [END pubsub_delete_subscription]
+signal.signal(signal.SIGINT, signal_handler)
 
-project_id = os.environ.get('DEVSHELL_PROJECT_ID')
-subscription_id = 'taxirides-realtime'
+
+publisher = pubsub_v1.PublisherClient()
+subscriber = pubsub_v1.SubscriberClient()
+
+topic_path = publisher.topic_path(project_id_pub, topic_id)
+subscription_path = subscriber.subscription_path(project_id_sub, subscription_id)
+
+# Wrap the subscriber in a 'with' block to automatically call close() to
+# close the underlying gRPC channel when done.
+with subscriber:
+    subscription = subscriber.create_subscription(
+        name=subscription_path, topic=topic_path)
+
+print(f"Subscription created: {subscription}")
 
 receive_messages_with_custom_attributes(
-    project_id, subscription_id, timeout=None)
+    project_id_sub, subscription_id, timeout=None)
+

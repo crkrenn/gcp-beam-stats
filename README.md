@@ -1,10 +1,12 @@
 # gcp-beam-stats
 
 * Next steps
-  * simple_pull_taxi
+  * beam max/min publish to big query
   * code rotate logs in big query
   * code max/min
   * develop dashboard
+
+* flake8/pylint
 
 * stream_data
 
