@@ -1,5 +1,11 @@
 # gcp-beam-stats
 
+* Next steps
+  * simple_pull_taxi
+  * code rotate logs in big query
+  * code max/min
+  * develop dashboard
+
 * stream_data
 
 * analyze stream

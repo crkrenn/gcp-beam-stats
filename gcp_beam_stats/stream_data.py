@@ -75,6 +75,8 @@ def publish_messages_with_error_handler(
 # publish_messages_with_error_handler(project_id, topic_id) 
 
 def main():
+    for topic in list_topics(project_id):
+        print(f"topic: {topic}")
     topics = [topic.name.split('/')[-1] for topic in list_topics(project_id)]
     if not topic_id in topics:
         create_topic(project_id, topic_id)

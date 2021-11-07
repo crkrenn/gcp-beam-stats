@@ -37,7 +37,7 @@ def list_topics(project_id: str) -> None:
     publisher = pubsub_v1.PublisherClient()
     project_path = f"projects/{project_id}"
 
-    for topic in publisher.list_topics(request={"project": project_path}):
+    for topic in publisher.list_topics(project_path):
         print(topic)
     # [END pubsub_list_topics]
 
