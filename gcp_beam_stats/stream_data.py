@@ -12,12 +12,14 @@ from utils import list_topics, create_topic
 
 project_id = os.environ.get('DEVSHELL_PROJECT_ID')
 topic_id = "random_0_1"
-sleep = 1.0 # seconds
+sleep = 1.0  # seconds
+
 
 def data_function():
     mean = 0
     sigma = 1
     return str(random.gauss(mean, sigma))
+
 
 def publish_messages_with_error_handler(
         project_id: str, 
@@ -41,7 +43,8 @@ def publish_messages_with_error_handler(
     def get_callback(
         publish_future: pubsub_v1.publisher.futures.Future, data: str
     ) -> Callable[[pubsub_v1.publisher.futures.Future], None]:
-        def callback(publish_future: pubsub_v1.publisher.futures.Future) -> None:
+        def callback(
+                publish_future: pubsub_v1.publisher.futures.Future) -> None:
             try:
                 # Wait 60 seconds for the publish call to succeed.
                 print(f"publish_future: {publish_future.result(timeout=60)}")
@@ -74,17 +77,19 @@ def publish_messages_with_error_handler(
 
 # publish_messages_with_error_handler(project_id, topic_id) 
 
+
 def main():
     for topic in list_topics(project_id):
         print(f"topic: {topic}")
     topics = [topic.name.split('/')[-1] for topic in list_topics(project_id)]
-    if not topic_id in topics:
+    if topic_id not in topics:
         create_topic(project_id, topic_id)
     publish_messages_with_error_handler(
         project_id=project_id,
         topic_id=topic_id, 
         data_function=data_function, 
         sleep=sleep)
+
 
 if __name__ == "__main__":
     main()
