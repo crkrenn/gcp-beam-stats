@@ -1,0 +1,12 @@
+// SublimeLinter Settings - User
+{
+    "linters": {
+        // The name of the linter you installed
+        "flake8": {	
+            "indent-size": 2,
+            "ignore": "E111",
+            "args": ["--ignore=E111,E114,W503", "--indent-size=2"],
+
+        }
+    }
+}

@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 # schema:
 #    timestamp
-#.   agregation size: seconds, minutes, hours, days, months, years, infinite
+#    agregation size: seconds, minutes, hours, days, months, years, infinite
 # 
 
 project_id = os.environ.get('DEVSHELL_PROJECT_ID')
