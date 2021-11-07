@@ -6,6 +6,8 @@
   * code max/min
   * develop dashboard
 
+  https://www.merkleinc.com/emea/blog/how-to-get-real-time-reports-in-data-studio
+
 * flake8/pylint
 
 * stream_data
