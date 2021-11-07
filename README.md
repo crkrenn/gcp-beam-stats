@@ -1,6 +1,8 @@
 # gcp-beam-stats
 
 * Next steps
+  * distogram/extrema to bigquery
+  * big query to plot/table in dash
   * beam max/min publish to big query
   * code rotate logs in big query
   * code max/min
