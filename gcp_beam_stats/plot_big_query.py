@@ -1,44 +1,123 @@
 #!/usr/bin/env python3
 
+# https://stackoverflow.com/questions/63459424/how-to-add-multiple-graphs-to-dash-app-on-a-single-browser-page
+# https://medium.com/analytics-vidhya/building-a-dashboard-app-using-plotlys-dash-a-complete-guide-from-beginner-to-pro-61e890bdc423
+# https://dash.plotly.com/live-updates
+
 import os
-import time
 
-from sqlalchemy import *
-from sqlalchemy.engine import create_engine
-from sqlalchemy.schema import *
+import distogram
+import jsonpickle
 
-from sqlalchemy import text
+import numpy as np
+import pandas as pd
+import plotly.express as px
 
-# schema:
-#    timestamp
-#    agregation size: seconds, minutes, hours, days, months, years, infinite
-# 
+import dash
+import dash_core_components as dcc
+# import dash_html_components as html
+from dash import html
 
-# export DEVSHELL_PROJECT_ID=interview-study-<tab>
-# export GOOGLE_APPLICATION_CREDENTIALS=~/.google_cloud/interview-study-<tab>
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-
-project_id = os.environ.get('DEVSHELL_PROJECT_ID')
-dataset = 'default_dataset'
-
-engine = create_engine(f'bigquery://{project_id}/{dataset}')
-
-with engine.connect() as conn:
-    conn.execute(text("DROP TABLE IF EXISTS some_table"))
-    conn.execute(text("CREATE TABLE some_table (x int, y int)"))
-    conn.execute(
-        text("INSERT INTO some_table (x, y) VALUES (:x, :y)"),
-        [{"x": 1, "y": 1}, 
-         {"x": 2, "y": 3},
-         {"x": 3, "y": 7},
-         {"x": 4, "y": 2},
-         {"x": 5, "y": 1}
-         ]
-    )
+from common import LabelledDistogram, make_distribution, make_distogram
 
 
-with engine.connect() as conn:
-    result = conn.execute(text("SELECT x, y FROM some_table"))
-    for row in result:
-        print(f"x: {row.x}  y: {row.y}")
+def read_distogram():
+    project_id = os.environ.get('DEVSHELL_PROJECT_ID')
+    dataset = 'default_dataset'
+
+    engine = create_engine(f'bigquery://{project_id}/{dataset}')
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    instance = session.query(LabelledDistogram).first() 
+    return jsonpickle.decode(instance.distogram_string)
+
+
+def main():
+    # h = read_distogram()
+    h = make_distogram(make_distribution())
+    print(f"min/mean/max {h.min}/{distogram.mean(h)}/{h.max}")
+    # plotly and dash
+    hist = distogram.histogram(h)
+    df_hist = pd.DataFrame(np.array(hist), columns=["bin", "count"])
+    fig = px.bar(df_hist, x="bin", y="count", title="distogram")    
+    # # plotly
+    # fig.update_layout(height=300)
+    # fig.show()
+    # dash
+
+    # colors = {
+    #     'background': '#111111',
+    #     'text': '#7FDBFF'
+    # }
+    # fig.update_layout(
+    #     plot_bgcolor=colors['background'],
+    #     paper_bgcolor=colors['background'],
+    #     font_color=colors['text']
+    # )
+
+    app = dash.Dash(__name__)
+    
+    app.layout = html.Div(children=[
+        html.H1(children='Hello There Dash'),
+
+        html.Div(children='''
+            Dash: A web application framework for your data.
+        '''),
+
+        dcc.Graph(
+            id='example-graph',
+            figure=fig
+        )
+    ])
+
+    # app.layout = html.Div(style={'backgroundColor': colors['background']}, children=[
+    #     html.H1(
+    #         children='Hello Dash',
+    #         style={
+    #             'textAlign': 'center',
+    #             'color': colors['text']
+    #         }
+    #     ),
+
+    #     html.Div(children='Dash: A web application framework for your data.', style={
+    #         'textAlign': 'center',
+    #         'color': colors['text']
+    #     }),
+
+    #     dcc.Graph(
+    #         id='example-graph-2',
+    #         figure=fig
+    #     )
+    # ])
+
+    # def generate_table(dataframe, max_rows=10):
+    #     return html.Table([
+    #         html.Thead(
+    #             html.Tr([html.Th(col) for col in dataframe.columns])
+    #         ),
+    #         html.Tbody([
+    #             html.Tr([
+    #                 html.Td(dataframe.iloc[i][col]) for col in dataframe.columns
+    #             ]) for i in range(min(len(dataframe), max_rows))
+    #         ])
+    #     ])
+
+
+    # app = dash.Dash(__name__)
+
+    # app.layout = html.Div([
+    #     html.H4(children='US Agriculture Exports (2011)'),
+    #     generate_table(df)
+    # ])
+
+    return app
+
+
+if __name__ == "__main__":
+    app = main()
+    app.run_server(debug=True)
 

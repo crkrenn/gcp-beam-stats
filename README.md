@@ -1,5 +1,49 @@
 # gcp-beam-stats
 
+# export DEVSHELL_PROJECT_ID=interview-study-<tab>
+# export GOOGLE_APPLICATION_CREDENTIALS=~/.google_cloud/interview-study-<tab>
+# export POSTGRES_USER=<user>
+# export POSTGRES_PASSWORD=<pass>
+# source ~/.google_cloud/pass-<tab>
+
+* Current
+  * dash layout: https://hellodash.pythonanywhere.com/
+  * https://dash-bootstrap-components.opensource.faculty.ai/docs/components/layout/
+  * CERULEAN (not bootstrap)]
+  * https://getbootstrap.com/2.3.2/components.html
+  * https://stackoverflow.com/questions/11267154/fit-cell-width-to-content
+  * add simple table to shiny_2 example (autofit)
+
+* All steps (- marks done):
+  * - test: push data to pubsub
+  * beam: store distograms on big_query
+    * - test data
+    * data on pubsub source
+    * datetime
+    * variable_name
+    * function to extract data
+  * cron: prune distograms
+    * group delete and update into single transactions
+  * plotly/dash: from big_query
+
+* functions/files/classes
+  * push data (topic/function/variable)
+  * beam
+    * make distogram
+      * superclass
+    * publish distogram (table)
+  * cron
+    * prune
+  * plotly
+    * make bar chart; 
+    * stats (max/min, etc.)
+  * extrema
+
+* sqlalchemy orm class (add real/datetime)
+
+* optional steps:
+  * add mean, count to distogram
+
 * Next steps
   * distogram/extrema to bigquery
   * big query to plot/table in dash
