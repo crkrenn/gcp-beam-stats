@@ -7,6 +7,7 @@
 # source ~/.google_cloud/pass-<tab>
 
 * Current
+  * make 10 years of dummy data in postgres
   * dash layout: https://hellodash.pythonanywhere.com/
   * https://dash-bootstrap-components.opensource.faculty.ai/docs/components/layout/
   * CERULEAN (not bootstrap)]
