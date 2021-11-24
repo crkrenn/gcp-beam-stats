@@ -19,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 from common import (
     Base, return_test_engine, LabelledDistogram, make_distribution, 
-    make_distogram, AggregationType)
+    make_distogram, AggregationType, delete_tables)
 
 
 try:
@@ -123,6 +123,8 @@ def main(engine):
     if False:
         with engine.connect() as conn:
             conn.execute(text("DROP TABLE IF EXISTS distograms"))
+    if False:
+        delete_tables(engine, "LabelledDistogram")
     print("before create")
     Base.metadata.create_all(engine)
 
@@ -166,13 +168,15 @@ def main(engine):
     # daily = 4 60
     # monthly = 5 24
     # yearly = 6 10
-    if False:
+    if True:
         print("adding pruned_test data")
         aggregation_lengths = [120, 120, 48, 60, 24, 10]
         aggregation_labels = (
             ["seconds", "minutes", "hours", "days", "months", "years"])
         date0 = datetime(2021, 10, 31)
         for i in range(len(AggregationType)):
+        # i = 0
+        # if True:
             print(AggregationType(i).name)
             for j in range(aggregation_lengths[i]):
                 delta_dict = {aggregation_labels[i]: -j}
@@ -181,7 +185,7 @@ def main(engine):
                 date.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
                 h = make_distogram(make_distribution())
                 d = LabelledDistogram(
-                    data_source="pruned_test",
+                    data_source="debug2",
                     variable_name="x",
                     datetime=date,
                     aggregation_type=AggregationType(i).name,
@@ -198,6 +202,8 @@ def main(engine):
         print(
             instance.primary_key,
             instance.variable_name,
+            instance.aggregation_type,
+            instance.data_source,
             instance.datetime)
 
 
@@ -209,9 +215,9 @@ def main(engine):
 if __name__ == "__main__":
     database_list = [
         "bigquery", "sqlite-memory", "sqlite-disk", "postgres"]
-    database = database_list[3]
+    database = database_list[2]
 
     engine = return_test_engine(database)
 
-    test(engine)
+    # test(engine)
     main(engine)

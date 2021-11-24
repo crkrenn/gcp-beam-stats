@@ -7,7 +7,7 @@ import random
 import jsonpickle
 import distogram
 
-from sqlalchemy import Column, String, DateTime, Enum, create_engine, orm
+from sqlalchemy import Column, String, DateTime, Enum, create_engine, orm, text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -33,7 +33,8 @@ class LabelledDistogram(Base):
     variable_name = Column(String)
     datetime = Column(DateTime(timezone=True))
     distogram_string = Column(String)
-    aggregation_type = Enum(AggregationType)
+    # aggregation_type = Enum(AggregationType)
+    aggregation_type = Column(String)
 
     distogram = distogram.Distogram
     mean = float
@@ -111,6 +112,15 @@ def make_distogram(data):
     # result = Labelled_Distogram()
     return h
     
+
+def delete_tables(engine, names):
+    # Get all tables in the database
+    for table in engine.table_names():
+        # Delete only the tables in the delete list
+        if table in names:
+            sql = text("DROP TABLE IF EXISTS {}".format(table))
+            engine.execute(sql)
+
 
 def return_test_engine(database):
 

@@ -2,7 +2,12 @@
 # notes
 #######################
 
-# improve formatting time series
+# figure out why first histogram is not the last
+
+# improve formatting time series plot; clean up datetime labels
+
+# consider logarithmic time axis: 
+# https://community.plotly.com/t/plotting-time-dates-on-a-log-axis/33205/7
 
 # time series from postgres; histogram from time series point
 # see "shiny_example_2"
@@ -33,6 +38,7 @@ import sys
 import pickle
 import base64
 import time
+import json
 
 from dotenv import load_dotenv
 from datetime import datetime
@@ -55,12 +61,8 @@ from dash import html
 from jupyter_dash import JupyterDash
 from dash.dependencies import Input, Output
 import dash_bootstrap_components as dbc
-
-
-# shiny_app imports
 import plotly.graph_objs as go
-from sklearn import datasets
-from sklearn.cluster import KMeans
+from dash import dash_table as dt
 
 # local
 from common import (Base,
@@ -75,6 +77,12 @@ except ImportError:
     from backports import zoneinfo
 
 #######################
+# Debug
+#######################
+
+print([[name, member, member.value] for name, member in AggregationType.__members__.items()])
+
+#######################
 # Data Analysis / Model
 #######################
 
@@ -82,15 +90,15 @@ except ImportError:
 load_dotenv()
 database_list = [
     "bigquery", "sqlite-memory", "sqlite-disk", "postgres"]
-database = database_list[3]
+database = database_list[2]
 engine = return_test_engine(database)
 
 # load initial data
 Session = sessionmaker(bind=engine)
 session = Session()
-labelled_distogram_list = (
+labelled_distogram_list = list(
     session.query(LabelledDistogram).order_by(
-        LabelledDistogram.primary_key)) 
+        LabelledDistogram.datetime)) 
 labelled_distogram_hash = {
     instance.primary_key: instance for instance in labelled_distogram_list}
 
@@ -98,9 +106,20 @@ df_metadata = pd.DataFrame(
     [instance.metadata_list for instance in labelled_distogram_list],
     columns=labelled_distogram_list[0].metadata_labels)
 
-# shiny_app code
-iris_raw = datasets.load_iris()
-iris = pd.DataFrame(iris_raw["data"], columns=iris_raw["feature_names"])
+
+df2 = pd.read_csv('https://git.io/Juf1t')
+df2 = df2[["State"]]
+# print(df2.to_dict('records'))
+
+
+# app.layout = dbc.Container([
+#     dbc.Label('Click a cell in the table:'),
+#     dt.DataTable(
+#         id='tbl', data=df.to_dict('records'),
+#         columns=[{"name": i, "id": i} for i in df.columns],
+#     ),
+#     dbc.Alert(id='tbl_out'),
+# ])
 
 #########################
 # Dashboard Layout / View
@@ -110,7 +129,7 @@ iris = pd.DataFrame(iris_raw["data"], columns=iris_raw["feature_names"])
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 
-def gcp_control(label):
+def gcp_control(label, choices):
     return dbc.Card(
         [
             html.Div(
@@ -120,9 +139,9 @@ def gcp_control(label):
                         id=label,
                         options=[
                             {"label": item, "value": item} 
-                                for item in df_metadata[label].unique()
+                                for item in choices
                         ],
-                        value=df_metadata[label].unique()[0],
+                        value=choices[0],
                     ),
                 ]
             )
@@ -130,68 +149,95 @@ def gcp_control(label):
     )
 
 
-# controls = dbc.Card(
-#     [
-#         html.Div(
-#             [
-#                 dbc.Label("X variable"),
-#                 dcc.Dropdown(
-#                     id="x-variable",
-#                     options=[
-#                         {"label": col, "value": col} for col in iris.columns
-#                     ],
-#                     value="sepal length (cm)",
-#                 ),
-#             ]
-#         ),
-#         html.Div(
-#             [
-#                 dbc.Label("Y variable"),
-#                 dcc.Dropdown(
-#                     id="y-variable",
-#                     options=[
-#                         {"label": col, "value": col} for col in iris.columns
-#                     ],
-#                     value="sepal width (cm)",
-#                 ),
-#             ]
-#         ),
-#         html.Div(
-#             [
-#                 dbc.Label("Cluster count"),
-#                 dbc.Input(id="cluster-count", type="number", value=3),
-#             ]
-#         ),
-#     ],
-#     body=True,
-# )
-
 app.layout = dbc.Container(
     [
-        html.H1("Iris k-means clustering"),
+        html.H1('Streaming statistics'),
         html.Hr(),
         # gcp_controls,
         dbc.Row(
             [
-                dbc.Col(dcc.Graph(id="time-series-graph"), md=4),
-                # dbc.Col(dcc.Graph(id="cluster-graph"), md=4),
-                # dbc.Col(dcc.Graph(id="histogram-graph"), md=4),
+                dbc.Col(
+                    gcp_control(
+                        'data_source', 
+                        df_metadata['data_source'].unique()
+                    ), md=3),
+                dbc.Col(
+                    gcp_control(
+                        'variable_name', 
+                        df_metadata['variable_name'].unique()
+                    ), md=3),
+
+                dbc.Col(
+                    gcp_control(
+                        'aggregation_type', 
+                        [name for name, member 
+                            in AggregationType.__members__.items()]
+                    ), md=3),
             ],
-            align="center",
-        ),
+            align='center',
+        ),        
         dbc.Row(
             [
-                dbc.Col(gcp_control("data_source"), md=4),
-                dbc.Col(gcp_control("variable_name"), md=4),
+                dbc.Col(dcc.Graph(id='time-series-graph'), md=4),
+                dbc.Col(dt.DataTable(
+                    id='tbl2', 
+                    data=[{'min': -2}],
+                    columns=[{'name': 'min', 'id': 'min'}],
+                    # data=df2.to_dict('records'),
+                    # columns=[{'name': i, 'id': i} for i in df2.columns],
+                    style_cell={'fontSize': 12}
+                    ), md=1),
+                dbc.Col([
+                    # dt.DataTable(
+                    #     data=[{'min': 0}],
+                    #     columns=[{'name': 'min', 'id': 'min'}],
+                    #     # columns=[{'name': i, 'id': i} for i in df.columns],
+                    # ),
+                    # dt.DataTable(
+                    # id='tbl3', 
+                    # data=[{'min': -2}],
+                    # columns=[{'name': 'min', 'id': 'min'}],
+                    # # data=df2.to_dict('records'),
+                    # # columns=[{'name': i, 'id': i} for i in df2.columns],
+                    # style_cell={'fontSize': 12}
+                    # ), 
+                    dbc.Col(id='tbl4')
+                    ],md=1),
+                # dbc.Col(dt.DataTable(id='min-table'), md=1),
+                        # dt.DataTable(min-table
+
+        #     id='tbl', data=df2.to_dict('records'),
+        #     columns=[{'name': i, 'id': i} for i in df2.columns],
+        # ),
+    #                 dt.DataTable(
+    #     id='tbl', data=df.to_dict('records'),
+    #     columns=[{'name': i, 'id': i} for i in df.columns],
+    # ),
+                dbc.Col(dcc.Graph(id='histogram-graph'), md=6),
+                # dbc.Col(dcc.Graph(id='cluster-graph'), md=4),
+                # dbc.Col(dcc.Graph(id='histogram-graph'), md=4),
+            ],
+            align='center',
+        ),
+
+        dt.DataTable(
+            id='tbl', data=df2.to_dict('records'),
+            columns=[{'name': i, 'id': i} for i in df2.columns],
+        ),
+        # html.Div([
+        #     dcc.Markdown('''
+        #         **Click Data**
+
+        #         Click on points in the graph.
+        #     """),
+        #     html.Pre(id='click-data', style=styles['pre']),
+        # ], className='three columns'),
+        dbc.Row(
+            [
+                dbc.Col(html.Pre(id='click-data'), md=4),
             ],
             align="center",
         ),
-        # dbc.Row(
-        #     [
-        #         dbc.Col(controls, md=4),
-        #     ],
-        #     align="center",
-        # ),
     ],
     fluid=True,
 )
@@ -202,150 +248,163 @@ app.layout = dbc.Container(
 #############################################
 
 @app.callback(
-    Output("time-series-graph", "figure"),
+    Output('time-series-graph', 'figure'),
     [
-        Input("data_source", "value"),
-        Input("variable_name", "value"),
+        Input('data_source', 'value'),
+        Input('variable_name', 'value'),
+        Input('aggregation_type', 'value'),
     ],
 )
-def make_time_series_graph(data_source, variable_name):
+def make_time_series_graph(data_source, variable_name, aggregation_type):
     df = df_metadata
     df_subset = df.loc[
-        (df["data_source"] == data_source) 
-        & (df["variable_name"] == variable_name)]
-    fig = px.scatter(
-        df_subset, 
-        x="datetime",
-        # y=["max", "mean", "min"]
-        y="mean"
-    )
+        (df['data_source'] == data_source) 
+        & (df['variable_name'] == variable_name)
+        & (df['aggregation_type'] == aggregation_type)]
     # Create figure
     fig = go.Figure()
-    x_label = "datetime"
-    variable_list = ["max", "mean", "min"]
+    x_label = 'datetime'
+    variable_list = ['max', 'mean', 'min']
     # Loop df columns and plot columns to the figure
     for variable in variable_list:
-        fig.add_trace(go.Scatter(x=df_subset[x_label], y=df_subset[variable],
-                            mode='markers', # 'lines' or 'markers'
-                            name=variable))
+        fig.add_trace(go.Scatter(
+            x=df_subset[x_label], 
+            y=df_subset[variable],
+            customdata=df_subset['primary_key'],
+            mode='markers', # 'lines' or 'markers'
+            name=variable))
+    fig.update_layout(clickmode='event+select')
     return fig
-    # Add traces
-    # fig.add_trace(go.Scatter(x=random_x, y=random_y0,
-    #                     mode='markers',
-    #                     name='markers'))
-    # fig.add_trace(go.Scatter(x=random_x, y=random_y1,
-    #                     mode='lines+markers',
-    #                     name='lines+markers'))
-    # fig.add_trace(go.Scatter(x=random_x, y=random_y2,
-    #                     mode='lines',
-    #                     name='lines'))
-    # return fig
+
+
+def get_instance(data_source, variable_name, aggregation_type, clickData):
+    ctx = dash.callback_context
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if clickData == None or trigger != 'time-series-graph':
+        df = df_metadata
+        df_subset = df.loc[
+            (df['data_source'] == data_source) 
+            & (df['variable_name'] == variable_name)
+            & (df['aggregation_type'] == aggregation_type)]
+        instance = labelled_distogram_hash[df_subset.iloc[-1].primary_key]
+    else:
+        instance = labelled_distogram_hash[
+            clickData['points'][0]['customdata']]
+    return instance
+
+@app.callback(
+    Output('histogram-graph', 'figure'),
+    [
+        Input('data_source', 'value'),
+        Input('variable_name', 'value'),
+        Input('aggregation_type', 'value'),
+        Input('time-series-graph', 'clickData')
+    ],
+)
+def make_histogram(data_source, variable_name, aggregation_type, clickData):
+    instance = get_instance(
+        data_source, variable_name, aggregation_type, clickData)
+    hist = distogram.histogram(instance.distogram)
+    df_hist = pd.DataFrame(np.array(hist), columns=['bin', 'count'])
+    return px.bar(df_hist, x='bin', y='count', title='distogram')
+    # fig = plotly_histogram(df_hist)
+    return json.dumps(clickData, indent=2)
+
+
+@app.callback(
+    Output('click-data', 'children'),
+    Input('time-series-graph', 'clickData'))
+def display_click_data(clickData):
+    return json.dumps(clickData, indent=2)
+
+
+@app.callback(
+    Output('tbl4', 'children'),
+    [
+        Input('data_source', 'value'),
+        Input('variable_name', 'value'),
+        Input('aggregation_type', 'value'),
+        Input('time-series-graph', 'clickData')
+    ],
+)
+def make_min_table(data_source, variable_name, aggregation_type, clickData):
+    instance = get_instance(
+        data_source, variable_name, aggregation_type, clickData)
+    return [ dt.DataTable(
+        data=[{'min': instance.mean}],
+        columns=[{'name': 'min', 'id': 'min'}],
+        # columns=[{'name': i, 'id': i} for i in df.columns],
+    ),
+    ]
+
+                # dbc.Col([
+                #     dt.DataTable(
+                #     id='tbl3', 
+                #     data=[{'min': -2}],
+                #     columns=[{'name': 'min', 'id': 'min'}],
+                #     # data=df2.to_dict('records'),
+                #     # columns=[{'name': i, 'id': i} for i in df2.columns],
+                #     style_cell={'fontSize': 12}
+                #     ), 
+                #     dbc.Col(id='tbl4')
+                #     ],md=1),
+
+# app.layout = dash_table.DataTable(
+#    id = 'datatable-paging',
+#    columns = [{
+#          "name": i,
+#          "id": i
+#       }
+#       for i in sorted(df.columns)
+#    ],
+#    page_current = 0,
+#    page_size = PAGE_SIZE,
+#    page_action = 'custom'
+# )
 
 # @app.callback(
-#     Output("cluster-graph", "figure"),
-#     [
-#         Input("x-variable", "value"),
-#         Input("y-variable", "value"),
-#         Input("cluster-count", "value"),
-#     ],
-# )
-# def make_graph(x, y, n_clusters):
-#     # minimal input validation, make sure there's at least one cluster
-#     km = KMeans(n_clusters=max(n_clusters, 1))
-#     df = iris.loc[:, [x, y]]
-#     km.fit(df.values)
-#     df["cluster"] = km.labels_
+#    Output('datatable-paging', 'data'),
+#    Input('datatable-paging', "page_current"),
+#    Input('datatable-paging', "page_size"))
+# def update_table(page_current, page_size):
+#    return df.iloc[
+#       page_current * page_size: (page_current + 1) * page_size
+#    ].to_dict('records')
 
-#     centers = km.cluster_centers_
+# html.Div([
+#     dt.DataTable(
+#             rows=df.to_dict('records'),
+#             columns=df.columns,
+#             row_selectable=True,
+#             filterable=True,
+#             sortable=True,
+#             selected_row_indices=list(df.index),  # all rows selected by default
+#             id='2'
+#      ),
+#     html.Button('Submit', id='button'),
+#     html.Div(id="div-1"),
+# ])
 
-#     data = [
-#         go.Scatter(
-#             x=df.loc[df.cluster == c, x],
-#             y=df.loc[df.cluster == c, y],
-#             mode="markers",
-#             marker={"size": 8},
-#             name="Cluster {}".format(c),
-#         )
-#         for c in range(n_clusters)
-#     ]
-
-#     data.append(
-#         go.Scatter(
-#             x=centers[:, 0],
-#             y=centers[:, 1],
-#             mode="markers",
-#             marker={"color": "#000", "size": 12, "symbol": "diamond"},
-#             name="Cluster centers",
-#         )
-#     )
-
-#     layout = {"xaxis": {"title": x}, "yaxis": {"title": y}}
-
-#     return go.Figure(data=data, layout=layout)
 
 # @app.callback(
-#     Output("histogram-graph", "figure"),
-#     [
-#         Input("x-variable", "value"),
-#         Input("y-variable", "value"),
-#         Input("cluster-count", "value"),
-#     ],
-# )
-# def make_histogram(x, y, n_clusters):
-#     # minimal input validation, make sure there's at least one cluster
-#     km = KMeans(n_clusters=max(n_clusters, 1))
-#     df = iris.loc[:, [x, y]]
-#     km.fit(df.values)
-#     df["cluster"] = km.labels_
+#     dash.dependencies.Output('div-1', 'children'),
+#     [dash.dependencies.Input('button', 'n_clicks')])
+# def update_output(n_clicks):
 
-#     centers = km.cluster_centers_
+#     df_chart = df.groupby('Name').sum()
 
-#     data = [
-#         go.Scatter(
-#             x=df.loc[df.cluster == c, x],
-#             y=df.loc[df.cluster == c, y],
-#             mode="markers",
-#             marker={"size": 8},
-#             name="Cluster {}".format(c),
-#         )
-#         for c in range(n_clusters)
-#     ]
-
-#     data.append(
-#         go.Scatter(
-#             x=centers[:, 0],
-#             y=centers[:, 1],
-#             mode="markers",
-#             marker={"color": "#000", "size": 12, "symbol": "diamond"},
-#             name="Cluster centers",
-#         )
-#     )
-
-#     layout = {"xaxis": {"title": x}, "yaxis": {"title": y}}
-
-#     return go.Figure(data=data, layout=layout)
-
-
-# Filter options
-
-# # make sure that x and y values can't be the same variable
-# def filter_options(v):
-#     """Disable option v"""
 #     return [
-#         {"label": col, "value": col, "disabled": col == v}
-#         for col in iris.columns
+#         dt.DataTable(
+#             rows=df_chart.to_dict('rows'),
+#             columns=df_chart.columns,
+#             row_selectable=True,
+#             filterable=True,
+#             sortable=True,
+#             selected_row_indices=list(df_chart.index),  # all rows selected by default
+#             id='3'
+#         )
 #     ]
-
-
-# # functionality is the same for both dropdowns, so we reuse filter_options
-# app.callback(Output("x-variable", "options"), [Input("y-variable", "value")])(
-#     filter_options
-# )
-# app.callback(Output("y-variable", "options"), [Input("x-variable", "value")])(
-#     filter_options
-# )
-
-
 # start Flask server
 # if __name__ == '__main__':
 #     app.run_server(
@@ -354,5 +413,5 @@ def make_time_series_graph(data_source, variable_name):
 #         port=8050
 #     )
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run_server(debug=True, port=8890)
