@@ -4,24 +4,22 @@ stream data to a Pub/Sub topic
 """
 
 import os
-import sys
 # import time
 # from typing import Callable
 import distogram
 from datetime import datetime
-import pickle
 import jsonpickle
 # from dataclasses import dataclass
-import base64
 import time
 
 from dateutil.relativedelta import relativedelta
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-from common import (Base,
-    LabelledDistogram, make_distribution, make_distogram, AggregationType)
+from common import (
+    Base, return_test_engine, LabelledDistogram, make_distribution, 
+    make_distogram, AggregationType)
 
 
 try:
@@ -47,31 +45,6 @@ batch_size = 10000
 
 
 
-def return_test_engine(string):
-
-    project_id = os.environ.get('DEVSHELL_PROJECT_ID')
-    postgres_user = os.environ.get('POSTGRES_USER')
-    postgres_password = os.environ.get('POSTGRES_PASSWORD')
-    dataset = 'default_dataset'
-
-    if database == "bigquery":
-        engine = create_engine(f'bigquery://{project_id}/{dataset}')
-    elif database == "sqlite-memory":
-        engine = create_engine('sqlite:///:memory:', echo=True)
-    elif database == "sqlite-disk":
-        engine = create_engine('sqlite:///./localdb', echo=True)
-    elif database == "postgres":
-        if not postgres_user:
-            print(f"ERROR: postgres_user {postgres_user} is not defined.")
-            sys.exit()
-        else:
-            engine = create_engine(
-                f'postgresql://{postgres_user}:{postgres_password}'
-                '@localhost:5432/google_cloud_dev')
-    else:
-        print(f"ERROR: database {database} is not recognized")
-        sys.exit()
-    return engine
 
 
 def test(engine):

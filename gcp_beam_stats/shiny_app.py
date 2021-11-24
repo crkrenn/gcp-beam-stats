@@ -1,8 +1,22 @@
-"""
-Dash port of Shiny iris k-means example:
+# # standard library
+# import os
 
-https://shiny.rstudio.com/gallery/kmeans-example.html
-"""
+# # dash libs
+# import dash
+# from dash.dependencies import Input, Output
+# import dash_core_components as dcc
+# import dash_html_components as html
+# import plotly.figure_factory as ff
+# import plotly.graph_objs as go
+
+# # pydata stack
+# import pandas as pd
+# from sqlalchemy import create_engine
+
+# # set params
+# conn = create_engine(os.environ['DB_URI'])
+
+# imports
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
@@ -11,8 +25,18 @@ from dash import Input, Output, dcc, html
 from sklearn import datasets
 from sklearn.cluster import KMeans
 
+
+#######################
+# Data Analysis / Model
+#######################
+
 iris_raw = datasets.load_iris()
 iris = pd.DataFrame(iris_raw["data"], columns=iris_raw["feature_names"])
+
+#########################
+# Dashboard Layout / View
+#########################
+
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
 
@@ -68,6 +92,11 @@ app.layout = dbc.Container(
 )
 
 
+
+#############################################
+# Interaction Between Components / Controller
+#############################################
+
 @app.callback(
     Output("cluster-graph", "figure"),
     [
@@ -110,6 +139,7 @@ def make_graph(x, y, n_clusters):
 
     return go.Figure(data=data, layout=layout)
 
+# Filter options
 
 # make sure that x and y values can't be the same variable
 def filter_options(v):
@@ -128,6 +158,14 @@ app.callback(Output("y-variable", "options"), [Input("x-variable", "value")])(
     filter_options
 )
 
+
+# start Flask server
+# if __name__ == '__main__':
+#     app.run_server(
+#         debug=True,
+#         host='0.0.0.0',
+#         port=8050
+#     )
 
 if __name__ == "__main__":
     app.run_server(debug=True, port=8890)

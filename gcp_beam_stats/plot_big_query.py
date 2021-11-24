@@ -18,17 +18,13 @@ import dash_core_components as dcc
 # import dash_html_components as html
 from dash import html
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from common import LabelledDistogram, make_distribution, make_distogram
+from common import (
+    LabelledDistogram, make_distribution, make_distogram, return_test_engine)
 
 
-def read_distogram():
-    project_id = os.environ.get('DEVSHELL_PROJECT_ID')
-    dataset = 'default_dataset'
-
-    engine = create_engine(f'bigquery://{project_id}/{dataset}')
+def read_distogram(engine):
     Session = sessionmaker(bind=engine)
     session = Session()
 
@@ -36,9 +32,9 @@ def read_distogram():
     return jsonpickle.decode(instance.distogram_string)
 
 
-def main():
-    # h = read_distogram()
-    h = make_distogram(make_distribution())
+def main(engine):
+    h = read_distogram(engine)
+    # h = make_distogram(make_distribution())
     print(f"min/mean/max {h.min}/{distogram.mean(h)}/{h.max}")
     # plotly and dash
     hist = distogram.histogram(h)
@@ -118,6 +114,12 @@ def main():
 
 
 if __name__ == "__main__":
-    app = main()
+    database_list = [
+        "bigquery", "sqlite-memory", "sqlite-disk", "postgres"]
+    database = database_list[3]
+
+    engine = return_test_engine(database)
+
+    app = main(engine)
     app.run_server(debug=True)
 

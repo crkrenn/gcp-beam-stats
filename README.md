@@ -7,8 +7,14 @@
 # source ~/.google_cloud/pass-<tab>
 
 * Current
-  * make 10 years of dummy data in postgres
+  * - make 10 years of dummy data in postgres
   * dash layout: https://hellodash.pythonanywhere.com/
+    - date dropdown
+      - load all date (limit 500?)
+    - variable dropdown (y/m/d)
+    - aggregation filter
+    - "live" button
+    - plot vs. time
   * https://dash-bootstrap-components.opensource.faculty.ai/docs/components/layout/
   * CERULEAN (not bootstrap)]
   * https://getbootstrap.com/2.3.2/components.html
@@ -26,6 +32,10 @@
   * cron: prune distograms
     * group delete and update into single transactions
   * plotly/dash: from big_query
+    * import distograms
+    * integrate distograms
+    * distogram_collection_class
+      * distogram
 
 * functions/files/classes
   * push data (topic/function/variable)
