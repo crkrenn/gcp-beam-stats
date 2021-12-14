@@ -6,6 +6,9 @@
 # export POSTGRES_PASSWORD=<pass>
 # source ~/.google_cloud/pass-<tab>
 
+* fix histogram width (see taxi data)
+* https://en.wikipedia.org/wiki/Histogram#/media/File:Travel_time_histogram_total_1_Stata.png
+
 * Current
   * - make 10 years of dummy data in postgres
   * dash layout: https://hellodash.pythonanywhere.com/

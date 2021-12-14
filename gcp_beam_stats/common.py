@@ -3,6 +3,7 @@ import os
 import sys 
 import uuid
 import random
+from datetime import datetime
 
 import jsonpickle
 import distogram
@@ -15,12 +16,12 @@ Base = declarative_base()
 
 @enum.unique
 class AggregationType(enum.Enum):
-    every = 0
-    minutely = 1
-    hourly = 2
-    daily = 3
-    monthly = 4
-    yearly = 5
+    seconds = 0
+    minutes = 1
+    hours = 2
+    days = 3
+    months = 4
+    years = 5
 
     # test for membership: 'every' in AggregationType.__members__
 
@@ -147,3 +148,52 @@ def return_test_engine(database):
         print(f"ERROR: database {database} is not recognized")
         sys.exit()
     return engine
+
+def taxi_datetime(string): 
+    return datetime.strptime(string, '%Y-%m-%d %H:%M:%S')
+
+taxi_data_headers_map = {
+    'tpep_dropoff_datetime': 
+        lambda trip: taxi_datetime(trip['tpep_dropoff_datetime']),
+    'dropoff_latitude': 
+        lambda trip: float(trip['dropoff_latitude']),
+    'dropoff_longitude': 
+        lambda trip: float(trip['dropoff_longitude']),
+    'pickup_latitude': 
+        lambda trip: float(trip['pickup_latitude']),
+    'pickup_longitude': 
+        lambda trip: float(trip['pickup_longitude']),
+    'tip_amount': 
+        lambda trip: float(trip['tip_amount']),
+    'fare_no_tip': 
+        lambda trip: float(trip['fare_amount']) - float(trip['tip_amount']),
+    'trip_duration': 
+        lambda trip: ((
+            taxi_datetime(trip['tpep_dropoff_datetime'])
+            - taxi_datetime(trip['tpep_pickup_datetime'])).total_seconds())
+}
+
+taxi_fields = [
+    "total_amount",
+    "passenger_count",
+    "RateCodeID",
+    "dropoff_longitude",
+    "VendorID",
+    "pickup_latitude",
+    "mta_tax",
+    "tpep_dropoff_datetime",
+    "store_and_fwd_flag",
+    "pickup_longitude",
+    "tip_amount",
+    "dropoff_latitude",
+    "improvement_surcharge",
+    "trip_distance",
+    "payment_type",
+    "tpep_pickup_datetime",
+    "fare_amount",
+    "tolls_amount",
+    "polyline",
+    "extra",
+    "fare_no_tip",
+    "trip_duration"
+]
