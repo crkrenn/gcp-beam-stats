@@ -3,20 +3,35 @@
 stream data to a Pub/Sub topic
 """
 
+
+# merge seconds -> minutes
+# update seconds -> minutes
+# partial aggregation
+
+# logarithmic publishing (every 12 seconds; 5 hours, 6 days, etc.)
+# original publish at finest scale
+# select, bin, publish, delete
+# add old data if appropriate
+# when? every agregation_label[1]
+# verify that we are not agregating twice. 
+# 10 trips in each bin
+
+# print("adding pruned_test data")
+# aggregation_lengths = [120, 120, 48, 60, 24, 10]
+# aggregation_labels = (
+#     ["seconds", "minutes", "hours", "days", "months", "years"])
+# date0 = datetime(2021, 10, 31)
+
 # min/max object lists not updating correctly
 
 # dev packages:
 import sys
-debug = False
 
 # prod packages
 import os
-# import time
-# from typing import Callable
 import distogram
 from datetime import datetime
 import jsonpickle
-# from dataclasses import dataclass
 import time
 import pandas as pd
 
@@ -29,112 +44,48 @@ from common import (
     Base, return_test_engine, LabelledDistogram, make_distribution, 
     make_distogram, AggregationType, delete_tables, taxi_data_headers_map)
 
+debug = False
 
 try:
     import zoneinfo
 except ImportError:
     from backports import zoneinfo
 
-
 project_id = os.environ.get('DEVSHELL_PROJECT_ID')
 dataset = 'default_dataset'
 sleep = 1.0  # seconds
 batch_size = 10000
 
-
 # store histograms, time, table, project, 
 
-  # * beam: store distograms on big_query
-  #   * test data
-  #   * data on pubsub source
-  #   * datetime
-  #   * variable_name
-  #   * function to extract data
 
-
-
-
-
-def test(engine):
-
+def prune_test_data(engine):
     Base.metadata.create_all(engine)
-
     Session = sessionmaker(bind=engine)
-
     session = Session()
 
-    data = make_distribution()
-    h = make_distogram(data)
-    print(f"min/max {h.min} {h.max}")
-    now = datetime.utcnow()
-    now = now.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
-    print(now)
+    aggregation_lengths = [120, 120, 48, 60, 24, 10]
+    aggregation_labels = (
+        ["seconds", "minutes", "hours", "days", "months", "years"])
 
-    # h_pickle = pickle.dumps(h)
-    # h_base64 = base64.b64encode(h_pickle).decode('ascii')
-    # print("h_base64")
-    # print(len(h_base64))
-    # h2_pickle = base64.b64decode(h_base64.encode('ascii'))
-    # h2 = pickle.loads(h2_pickle)
-    # print(f"min/mean/max {h2.min}/{distogram.mean(h2)}/{h2.max}")
 
-    # h_json = jsonpickle.encode(h)
-    # print("h_json")
-    # print(len(h_json))
-    # # print(h_json)
-    # h2 = jsonpickle.decode(h_json)
-    # print(f"min/mean/max {h2.min}/{distogram.mean(h2)}/{h2.max}")
-
-    # d = LabelledDistogram(
-    #     data_source="dev",
-    #     variable_name="x",
-    #     datetime=now ,
-    #     aggregation_type="every",
-    #     distogram=h)
-    # d2 = LabelledDistogram(
-    #     data_source="dev",
-    #     variable_name="x",
-    #     datetime=now ,
-    #     aggregation_type="every",
-    #     distogram=h)
-
-    print(f"d: {d}")
-    print(f"d2: {d2}")
-    print(f"h_pickle: {len(d.distogram_string)}")
-    print(f"d.__table__\n{d.__table__}")
-
-    session.add(d)
-    session.add(d2)
-
-    print(f"session.new: {session.new}")
-    session.commit()
-    print(f"session.new: {session.new}")
-    print(f"d: {d}")
-    print(f"d2: {d2}")
 
     for instance in (
         session.query(LabelledDistogram).order_by(
             LabelledDistogram.primary_key)):
-        print(instance.primary_key, instance.variable_name)
-
-    # primary_key = Column(Sequence('user_id_seq'), primary_key=True)
-    # data_source = Column(String)
-    # variable_name = Column(String)
-    # datetime = Column(DateTime(timezone=True))
-    # distogram_string = Column(String)
-    # aggregation_type = Enum(AggregationType)
+        pass
+    print(
+        instance.primary_key,
+        instance.variable_name,
+        instance.aggregation_type,
+        instance.data_source,
+        instance.datetime)
 
 def publish_pruned_test_data(engine):
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
-    # secondly = 1 120
-    # minutely = 2 120
-    # hourly = 3 48
-    # daily = 4 60
-    # monthly = 5 24
-    # yearly = 6 10
-    if False:
+    if True:
         print("adding pruned_test data")
         aggregation_lengths = [120, 120, 48, 60, 24, 10]
         aggregation_labels = (
@@ -144,21 +95,28 @@ def publish_pruned_test_data(engine):
         # i = 0
         # if True:
             print(AggregationType(i).name)
-            for j in range(aggregation_lengths[i]):
+            j_min = 0
+            j_max = 5 * aggregation_lengths[i]
+            j_delta = aggregation_lengths[i] // 5
+            last_date = date0
+            for j in range(j_min, j_max, j_delta):
                 delta_dict = {aggregation_labels[i]: -j}
                 delta = relativedelta(**delta_dict)
                 date = date0 + delta
                 # America/New_York
                 date.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
                 h = make_distogram(make_distribution())
-                # d = LabelledDistogram(
-                #     data_source="debug2",
-                #     variable_name="x",
-                #     datetime=date,
-                #     aggregation_type=AggregationType(i).name,
-                #     distogram=h)
+                d = LabelledDistogram(
+                    data_source="debug3",
+                    variable_name="x",
+                    datetime_min=last_date,
+                    datetime=date,
+                    aggregation_type=AggregationType(0).name,
+                    temporary_record=False,
+                    distogram=h)
                 session.add(d)
                 session.commit()
+                last_date = date
         print("before commit")
         session.commit()
         print("after commit")
@@ -236,12 +194,6 @@ def publish_taxi_data(engine):
 
 def main(engine):
 
-    print("before delete")
-    if False:
-        with engine.connect() as conn:
-            conn.execute(text("DROP TABLE IF EXISTS distograms"))
-    if False:
-        delete_tables(engine, "LabelledDistogram")
     print("before create")
     Base.metadata.create_all(engine)
 
@@ -256,32 +208,17 @@ def main(engine):
         success = True
         # print(instance.primary_key, instance.variable_name, instance.datetime)
 
+
     if success:
         print()
         print(instance.primary_key, instance.variable_name)
         h2 = jsonpickle.decode(instance.distogram_string)
         print(f"min/mean/max {h2.min}/{distogram.mean(h2)}/{h2.max}")
 
-    while False:
+    publish_pruned_test_data(engine)
+    prune_test_data(engine)
 
-        h = make_distogram(make_distribution())
-        now = datetime.utcnow()
-        now = now.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
-        # d = LabelledDistogram(
-        #     data_source="dev",
-        #     variable_name="x",
-        #     datetime=now,
-        #     aggregation_type="every",
-        #     distogram=h)
-        print()
-        print(d)
-        session.add(d)
-        session.commit()
-        time.sleep(3)
-
-    # publish_pruned_test_data(engine)
-
-    publish_taxi_data(engine)
+    # publish_taxi_data(engine)
     # every 
     print("read from database")
     for instance in (
@@ -295,46 +232,19 @@ def main(engine):
         instance.data_source,
         instance.datetime)
 
-
-
 # from datetime import date
 # from dateutil.relativedelta import relativedelta
 
 # six_months = date.today() + relativedelta(months=+6)
 
+
 if __name__ == "__main__":
     database_list = [
-        "bigquery", "sqlite-memory", "sqlite-disk", "postgres"]
-    database = database_list[2]
-
+        "bigquery", "sqlite-memory", "sqlite-disk", "sqlite-disk-2", "postgres"]
+    database = database_list[3]
     engine = return_test_engine(database)
+    print(engine)
 
     # test(engine)
     main(engine)
-
-            # delta_dict = {aggregation_type: aggregation_length}
-            #     delta = relativedelta(**delta_dict)
-            #     date = date0 + delta
-            #     # America/New_York
-            #     date.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
-        # i = 0
-        # # if True:
-        #     print(AggregationType(i).name)
-        #     for j in range(aggregation_lengths[i]):
-        #         delta_dict = {aggregation_labels[i]: -j}
-        #         delta = relativedelta(**delta_dict)
-        #         date = date0 + delta
-        #         date.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
-        #         h = make_distogram(make_distribution())
-        #         d = LabelledDistogram(
-        #             data_source="debug2",
-        #             variable_name="x",
-        #             datetime=date,
-        #             aggregation_type=AggregationType(i).name,
-        #             distogram=h)
-        #         session.add(d)
-        #         session.commit()
-        # print("before commit")
-        # session.commit()
-        # print("after commit")
 

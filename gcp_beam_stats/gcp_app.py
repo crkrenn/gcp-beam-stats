@@ -2,7 +2,15 @@
 # notes
 #######################
 
-# write min_max_queue
+# fix min/max date
+# replace min/max tables with min/max/mean/(count)more (count)?
+# make detail table
+# fix hang in database creation
+# work on thinning database
+
+# Future development/polishing:
+# track representative points for each histogram bin as well as min/max
+
 # use uuid again?
 # object dict
 
@@ -26,7 +34,7 @@
 
 # functions: select data
 
-# data structure
+# dtructure
 
 #######################
 # python imports
@@ -34,12 +42,13 @@
 
 # system
 import json
+import math
 
 from dotenv import load_dotenv
 
 # community
 import distogram
-import numpy as np
+# import numpy as np
 import pandas as pd
 
 from sqlalchemy.orm import sessionmaker
@@ -55,7 +64,23 @@ import plotly.graph_objs as go
 from dash import dash_table as dt
 
 # local
-from common import (LabelledDistogram, return_test_engine)
+from common import (
+    LabelledDistogram, return_test_engine, histogram_step_plot_data)
+
+
+def is_interactive():
+    import __main__ as main
+    return not hasattr(main, '__file__')
+
+
+if is_interactive():
+    print("interactive!")
+    from jupyter_dash import JupyterDash
+   
+database_list = [
+    "bigquery", "sqlite-memory", "sqlite-disk", "sqlite-disk-2", "postgres"]
+database = database_list[3]
+engine = return_test_engine(database)
 
 # # conditional imports
 # try:
@@ -74,10 +99,11 @@ from common import (LabelledDistogram, return_test_engine)
 
 # choose database (currently postgres)
 load_dotenv()
-database_list = [
-    "bigquery", "sqlite-memory", "sqlite-disk", "postgres"]
-database = database_list[2]
-engine = return_test_engine(database)
+# moved to begining of file
+# database_list = [
+#     "bigquery", "sqlite-memory", "sqlite-disk", "postgres"]
+# database = database_list[2]
+# engine = return_test_engine(database)
 
 # load initial data
 Session = sessionmaker(bind=engine)
@@ -106,16 +132,19 @@ def gcp_control(label, choices):
                 options=[
                     {"label": item, "value": item} for item in choices],
                 value=choices[0],
+                searchable=False,
             )])
          ]
     )
 
-
-app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
+if is_interactive():
+    app = JupyterDash(external_stylesheets=[dbc.themes.BOOTSTRAP])
+else:
+    app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 app.layout = dbc.Container(
     [
-        html.H1('Streaming summary statistics'),
+        html.H1('{Streaming} summary statistics'),
         html.Hr(),
         dbc.Row(
             [
@@ -140,19 +169,19 @@ app.layout = dbc.Container(
         ),        
         dbc.Row(
             [
-                dbc.Col(dcc.Graph(id='time-series-graph'), md=5),
-                dbc.Col([dbc.Col(id='min-table')], md=1),
+                dbc.Col(dcc.Graph(id='time-series-graph'), md=4),
+                dbc.Col([dbc.Col(id='min-table')], md=2),
                 dbc.Col(dcc.Graph(id='histogram-graph'), md=5),
-                dbc.Col([dbc.Col(id='max-table')], md=1),
+                # dbc.Col([dbc.Col(id='max-table')], md=2),
             ],
             align='center',
         ),
-        # dbc.Row(
-        #     [
-        #         dbc.Col([dbc.Col(id='detail-table')], md=12),
-        #     ],
-        #     align='center',
-        # ),
+        dbc.Row(
+            [
+                dbc.Col([dbc.Col(id='max-table')], md=12),
+            ],
+            align='center',
+        ),
         dbc.Row(
             [
                 dbc.Col(html.Pre(id='click-data'), md=4),
@@ -213,6 +242,8 @@ def make_time_series_graph(data_source, variable_name, aggregation_type):
             mode='markers',  # 'lines' or 'markers'
             name=variable))
     fig.update_layout(clickmode='event+select')
+    fig.update_xaxes(title_text="date/time")
+    fig.update_yaxes(title_text=variable_name)
     return fig
 
 
@@ -228,14 +259,66 @@ def make_time_series_graph(data_source, variable_name, aggregation_type):
 def make_histogram(data_source, variable_name, aggregation_type, clickData):
     instance = get_instance(
         data_source, variable_name, aggregation_type, clickData)
-    hist = distogram.histogram(instance.distogram)
+    hist = distogram.frequency_density_distribution(instance.distogram)
+    datetime_min = instance.datetime_min
+    datetime = instance.datetime
     if hist == None:
-        hist = instance.distogram.bins
-    df_hist = pd.DataFrame(np.array(hist), columns=['value', 'count'])
-    fig = px.bar(df_hist, x='value', y='count')
+        fig = px.scatter(
+            x=[instance.distogram.bins[0][0]],
+            y=[1],
+            labels={"x": variable_name, "y": "count"}
+            )
+        return fig
+    labels = ["bin", "count/bin width"]
+    df_hist = histogram_step_plot_data(hist, labels)
+    fig = px.line(
+        df_hist,
+        x=labels[0],
+        y=labels[1],
+        labels = {labels[0]: variable_name},
+        log_y=True,
+        title=f"From: {datetime_min}<br>To: {datetime}"
+    )
+    fig.update_traces(mode="lines", line_shape="hv")
     fig.update_layout(clickmode='event+select')
     return fig
 
+def make_min_max_table(
+    data_source, variable_name, aggregation_type, clickData,
+    min_max_type):
+    if min_max_type not in ["min", "max"]:
+        raise ValueError(
+            f"{min_max_type} is not supported. "
+            f"Only 'min' and 'max' are supported.")
+    instance = get_instance(
+        data_source, variable_name, aggregation_type, clickData)
+    if min_max_type == "min":
+        min_max_data = distogram.min_list(instance.distogram)
+    elif min_max_type == "max":
+        min_max_data = distogram.max_list(instance.distogram)
+    # calculate necessary significant figures
+    if len(min_max_data) > 1:
+        min_data = min(min_max_data)
+        max_data = max(min_max_data)
+        range_list = [min_max_data[i] - min_max_data[i-1] for i in range(1,len(min_max_data))]
+        range_list.sort()
+        range_list = [i for i in range_list if i > 0]
+        max_abs_data = max([abs(min_data), abs(max_data)])
+        sig_figs_needed = -int(math.log10(range_list[0]/max_abs_data))
+        format_string = "{" + f":.{sig_figs_needed}e" + "}"
+    else:
+        format_string = "{:.2e}"
+
+    df = pd.DataFrame(
+        [format_string.format(i) 
+                for i in min_max_data],
+        columns=[min_max_type])
+    return [dt.DataTable(
+        columns=[{"name": i, "id": i} for i in df.columns],
+        data=df.to_dict('records'),
+        style_cell={'fontSize': 12},
+    ),
+    ]
 
 @app.callback(
     Output('min-table', 'children'),
@@ -247,15 +330,8 @@ def make_histogram(data_source, variable_name, aggregation_type, clickData):
     ],
 )
 def make_min_table(data_source, variable_name, aggregation_type, clickData):
-    instance = get_instance(
-        data_source, variable_name, aggregation_type, clickData)
-    return [dt.DataTable(
-        data=[{'min': "{:.2e}".format(instance.distogram.min)}],
-        columns=[{'name': 'min', 'id': 'min'}],
-        style_cell={'fontSize': 12}
-    ),
-    ]
-
+    return make_min_max_table(
+        data_source, variable_name, aggregation_type, clickData, min_max_type="min")
 
 @app.callback(
     Output('max-table', 'children'),
@@ -267,38 +343,13 @@ def make_min_table(data_source, variable_name, aggregation_type, clickData):
     ],
 )
 def make_max_table(data_source, variable_name, aggregation_type, clickData):
-    instance = get_instance(
-        data_source, variable_name, aggregation_type, clickData)
-    return [dt.DataTable(
-        data=[{'max': "{:.2e}".format(instance.distogram.max)}],
-        columns=[{'name': 'max', 'id': 'max'}],
-        style_cell={'fontSize': 12}
-    ),
-    ]
+    return make_min_max_table(
+        data_source, variable_name, aggregation_type, clickData, min_max_type="max")
 
-# @app.callback(
-#     Output('detail-table', 'children'),
-#     [
-#         Input('data_source', 'value'),
-#         Input('variable_name', 'value'),
-#         Input('aggregation_type', 'value'),
-#         Input('time-series-graph', 'clickData'),
-#         Input('histogram-graph', 'clickData')
-#     ],
-# )
-def make_max_table(data_source, variable_name, aggregation_type, clickData):
-    instance = get_instance(
-        data_source, variable_name, aggregation_type, clickData)
-    return [dt.DataTable(
-        data=[{'max': "{:.2e}".format(instance.distogram.max)}],
-        columns=[{'name': 'max', 'id': 'max'}],
-        style_cell={'fontSize': 12}
-    ),
-    ]
 
 @app.callback(
     Output('click-data', 'children'),
-    Input('time-series-graph', 'clickData'))
+    Input('histogram-graph', 'clickData'))
 def display_click_data(clickData):
     return json.dumps(clickData, indent=2)
 
@@ -306,8 +357,45 @@ def display_click_data(clickData):
 @app.callback(
     Output('click-data-2', 'children'),
     Input('histogram-graph', 'clickData'))
-def display_click_data(clickData):
-    return json.dumps(clickData, indent=2)
+    # Input('min-table', "derived_virtual_selected_rows"))
+
+    # Input('min-table', 'selected_columns'))
+def display_click_data(selected_columns):
+    return json.dumps(selected_columns, indent=2)
+
+# # table with click callback
+# from dash import Dash, Input, Output, callback
+# from dash import dash_table as dt
+# # import pandas as pd
+# # import dash_bootstrap_components as dbc
+
+# df = pd.read_csv('https://git.io/Juf1t')
+# # df = df["State"]
+# df=df[["State"]]
+# app = JupyterDash(external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+# app.layout = dbc.Container([
+#     dbc.Label('Click a cell in the table:'),
+#     dt.DataTable(
+#         id='tbl', data=df.to_dict('records'),
+#         columns=[{"name": i, "id": i} for i in df.columns],
+#     ),
+#     dbc.Alert(id='tbl_out'),
+# ])
+
+# @callback(Output('tbl_out', 'children'), Input('tbl', 'active_cell'))
+# def update_graphs(active_cell):
+#     return str(active_cell) if active_cell else "Click the table"
+
+# # if __name__ == "__main__":
+# #     app.run_server(debug=True)
+# run(app)
+
+
+#############################################
+# Interaction Between Components / Controller
+#############################################
+
 
 # start Flask server
 # if __name__ == '__main__':
@@ -318,4 +406,8 @@ def display_click_data(clickData):
 #     )
 
 if __name__ == '__main__':
-    app.run_server(debug=True, port=8890)
+    if is_interactive():
+        app.run_server(mode='inline')
+    else:
+        app.run_server(debug=True, port=8893)
+    

@@ -6,10 +6,12 @@ import random
 from datetime import datetime
 
 import jsonpickle
-import distogram
+import pandas as pd
 
-from sqlalchemy import Column, String, DateTime, Enum, create_engine, orm, text
+from sqlalchemy import Column, String, Boolean, DateTime, create_engine, orm, text
 from sqlalchemy.orm import declarative_base
+
+import distogram
 
 Base = declarative_base()
 
@@ -33,9 +35,10 @@ class LabelledDistogram(Base):
     data_source = Column(String)
     variable_name = Column(String)
     datetime = Column(DateTime(timezone=True))
+    datetime_min = Column(DateTime(timezone=True))
     distogram_string = Column(String)
-    # aggregation_type = Enum(AggregationType)
     aggregation_type = Column(String)
+    temporary_record = Column(Boolean, default=False)
 
     distogram = distogram.Distogram
     mean = float
@@ -48,7 +51,9 @@ class LabelledDistogram(Base):
             self.data_source,
             self.variable_name,
             self.datetime,
+            self.datetime_min,
             self.aggregation_type,
+            self.temporary_record,
             self.mean,
             self.stddev,
             self.distogram.max,
@@ -62,7 +67,9 @@ class LabelledDistogram(Base):
             "data_source",
             "variable_name",
             "datetime",
+            "datetime_min",
             "aggregation_type",
+            "temporary_record",
             "mean",
             "stdev",
             "max",
@@ -82,7 +89,9 @@ class LabelledDistogram(Base):
             f"primary_key='{self.primary_key}', "
             f"variable_name='{self.variable_name}', "
             f"datetime='{self.datetime}'{type(self.datetime)}, "
+            f"datetime_min='{self.datetime_min}'{type(self.datetime_min)}, "
             f"aggregation_type='{self.aggregation_type}', "
+            f"temporary_record='{self.temporary_record}', "
             f"min/max='{self.distogram.min}/{self.distogram.max}, "
             f"mean/std='{self.mean}/{self.stddev}'"
         )
@@ -136,6 +145,8 @@ def return_test_engine(database):
         engine = create_engine('sqlite:///:memory:', echo=True)
     elif database == "sqlite-disk":
         engine = create_engine('sqlite:///./localdb', echo=True)
+    elif database == "sqlite-disk-2":
+        engine = create_engine('sqlite:///./localdb-2', echo=True)
     elif database == "postgres":
         if not postgres_user:
             print(f"ERROR: postgres_user {postgres_user} is not defined.")
@@ -149,8 +160,21 @@ def return_test_engine(database):
         sys.exit()
     return engine
 
+
 def taxi_datetime(string): 
     return datetime.strptime(string, '%Y-%m-%d %H:%M:%S')
+
+
+def histogram_step_plot_data(np_hist, columns):
+    counts, bins2 = np_hist
+    if len(bins2) != len(counts) + 1:
+        raise ValueError("histogram data is invalid. len(bins) != len(counts) + 1")
+    data = [[bins2[0], 0]]
+    data.extend([[bin1, count] for count, bin1 in zip(counts,bins2)])
+    data.append([bins2[-1],0])
+    df = pd.DataFrame(data, columns=columns)
+    return df
+
 
 taxi_data_headers_map = {
     'tpep_dropoff_datetime': 
