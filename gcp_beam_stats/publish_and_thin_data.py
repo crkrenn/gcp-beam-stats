@@ -2,6 +2,23 @@
 """
 stream data to a Pub/Sub topic
 """
+# fix test data so that all intervals are 1 sec. 
+
+try:
+    from icecream import ic
+except ImportError:  # Graceful fallback if IceCream isn't installed.
+    ic = lambda *a: None if not a else (a[0] if len(a) == 1 else a)  # noqa
+
+# def ic(*a):
+#     print(*a)
+#     return (
+#         None if not a else (a[0] if len(a) == 1 else a)  # noqa
+#     )
+
+def is_interactive():
+    import __main__ as main
+    return not hasattr(main, '__file__')
+
 
 
 # merge seconds -> minutes
@@ -40,6 +57,8 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
+
+
 from common import (
     Base, return_test_engine, LabelledDistogram, make_distribution, 
     make_distogram, AggregationType, delete_tables, taxi_data_headers_map)
@@ -51,6 +70,8 @@ try:
 except ImportError:
     from backports import zoneinfo
 
+    
+    
 project_id = os.environ.get('DEVSHELL_PROJECT_ID')
 dataset = 'default_dataset'
 sleep = 1.0  # seconds
@@ -60,6 +81,7 @@ batch_size = 10000
 
 
 def prune_test_data(engine):
+    # aggregation: min <= time < max 
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -68,18 +90,59 @@ def prune_test_data(engine):
     aggregation_labels = (
         ["seconds", "minutes", "hours", "days", "months", "years"])
 
-
-
-    for instance in (
+    # load initial data
+    labelled_distogram_list = list(
         session.query(LabelledDistogram).order_by(
-            LabelledDistogram.primary_key)):
-        pass
-    print(
-        instance.primary_key,
-        instance.variable_name,
-        instance.aggregation_type,
-        instance.data_source,
-        instance.datetime)
+            LabelledDistogram.datetime)) 
+    labelled_distogram_hash = {
+        instance.primary_key: instance for instance in labelled_distogram_list}
+
+    df_metadata = pd.DataFrame(
+        [instance.metadata_list for instance in labelled_distogram_list],
+        columns=labelled_distogram_list[0].metadata_labels)
+
+    first_time = df_metadata.iloc[0].at['datetime']
+    last_time = df_metadata.iloc[-1].at['datetime']
+    df_metadata['parsed'] = False
+    
+    # combine seconds to minutes
+    # @TODO: writing time rounding function
+    aggregation_index = 0
+    df_fine = df_metadata[
+        df_metadata['aggregation_type'] == aggregation_labels[aggregation_index]]
+    df_fine.sort_values(by=['datetime_min'], inplace=True)
+    df_fine.reset_index(drop=True, inplace=True)
+
+    delta_dict = {
+        aggregation_labels[aggregation_index]: aggregation_lengths[aggregation_index]}
+    min_keep_time = last_time - relativedelta(**delta_dict)
+
+    delta_dict = {aggregation_labels[aggregation_index + 1]: 1}
+
+    merge_stop_time = last_time
+    merge_start_time = merge_stop_time - relativedelta(**delta_dict)
+    # while merge_start_time > first_time:
+    # if True:
+    for i in range(20):
+        merge_start_time = merge_stop_time - relativedelta(**delta_dict)
+        rounding_dict = {"microsecond": 0}
+        for j in range(aggregation_index + 1):
+            rounding_dict[aggregation_labels[j][:-1]] = 0
+        merge_start_time = merge_start_time.replace(**rounding_dict)
+        merge_stop_time = merge_start_time + relativedelta(**delta_dict)
+        
+        df_mask = ((df_fine["datetime_min"] >= merge_start_time)
+                   & (df_fine["datetime"] <= merge_stop_time))
+        df_merge = df_fine[df_mask]
+        df_fine.loc[df_mask, "parsed"] = True
+        if not df_merge.empty:
+            merge_stop_time = merge_start_time
+        else:
+            merge_stop_time = df_fine[df_fine["parsed"] == False].iloc[-1].at['datetime_min']
+            merge_stop_time = merge_stop_time + relativedelta(seconds=1)
+            
+        ic(merge_start_time, merge_stop_time)
+        ic(df_merge[["datetime_min", "datetime"]])
 
 def publish_pruned_test_data(engine):
     Base.metadata.create_all(engine)
@@ -95,28 +158,29 @@ def publish_pruned_test_data(engine):
         # i = 0
         # if True:
             print(AggregationType(i).name)
-            j_min = 0
+            j_min = 1
             j_max = 5 * aggregation_lengths[i]
             j_delta = aggregation_lengths[i] // 5
-            last_date = date0
             for j in range(j_min, j_max, j_delta):
                 delta_dict = {aggregation_labels[i]: -j}
                 delta = relativedelta(**delta_dict)
                 date = date0 + delta
+                delta_dict = {aggregation_labels[0]: 1}
+                delta = relativedelta(**delta_dict)
+                date_max = date + delta
                 # America/New_York
                 date.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
                 h = make_distogram(make_distribution())
                 d = LabelledDistogram(
                     data_source="debug3",
                     variable_name="x",
-                    datetime_min=last_date,
-                    datetime=date,
+                    datetime_min=date,
+                    datetime=date_max,
                     aggregation_type=AggregationType(0).name,
                     temporary_record=False,
                     distogram=h)
                 session.add(d)
                 session.commit()
-                last_date = date
         print("before commit")
         session.commit()
         print("after commit")
@@ -143,7 +207,7 @@ def publish_taxi_data(engine):
     print("taxi!")
     # minutes/hours/days/weeks
     df = pd.read_parquet('data.parquet')
-    df.sort_values(by=['tpep_dropoff_datetime'])
+    df.sort_values(by=['tpep_dropoff_datetime'], inplace=True)
     # df2 = df.tail(1000000)['dropoff_latitude']
     # df2.to_csv('latitude.csv')
     # sys.exit()
@@ -215,8 +279,7 @@ def main(engine):
         h2 = jsonpickle.decode(instance.distogram_string)
         print(f"min/mean/max {h2.min}/{distogram.mean(h2)}/{h2.max}")
 
-    publish_pruned_test_data(engine)
-    prune_test_data(engine)
+
 
     # publish_taxi_data(engine)
     # every 
@@ -231,6 +294,9 @@ def main(engine):
         instance.aggregation_type,
         instance.data_source,
         instance.datetime)
+    
+        # publish_pruned_test_data(engine)
+#     prune_test_data(engine)
 
 # from datetime import date
 # from dateutil.relativedelta import relativedelta
@@ -239,6 +305,7 @@ def main(engine):
 
 
 if __name__ == "__main__":
+    import os
     database_list = [
         "bigquery", "sqlite-memory", "sqlite-disk", "sqlite-disk-2", "postgres"]
     database = database_list[3]
@@ -246,5 +313,8 @@ if __name__ == "__main__":
     print(engine)
 
     # test(engine)
-    main(engine)
+#     main(engine)
+    # os.remove("./localdb-2")
+    # publish_pruned_test_data(engine)
 
+    prune_test_data(engine)
