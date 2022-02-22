@@ -2,7 +2,15 @@
 """
 stream data to a Pub/Sub topic
 """
-# fix test data so that all intervals are 1 sec. 
+# @TODO: add tests
+# @TODO: add class for datetime floor
+
+
+# with session.begin():
+#     session.add(some_object())
+#     session.add(some_other_object())
+# # commits transaction at the end, or rolls back if there
+# # was an exception raised
 
 try:
     from icecream import ic
@@ -35,7 +43,7 @@ def is_interactive():
 
 # print("adding pruned_test data")
 # aggregation_lengths = [120, 120, 48, 60, 24, 10]
-# aggregation_labels = (
+# datetime_aggregation_labels = (
 #     ["seconds", "minutes", "hours", "days", "months", "years"])
 # date0 = datetime(2021, 10, 31)
 
@@ -48,6 +56,7 @@ import sys
 import os
 import distogram
 from datetime import datetime
+from datetime import timedelta
 import jsonpickle
 import time
 import pandas as pd
@@ -79,6 +88,89 @@ batch_size = 10000
 
 # store histograms, time, table, project, 
 
+datetime_aggregation_labels_delta = (
+    "seconds", "minutes", "hours", "days", "months", "years")
+datetime_aggregation_labels_round = (
+    "second", "minute", "hour", "day", "month", "year")
+datetime_delta_to_round_dict = {
+    delta_label: round_label for delta_label, round_label in zip(
+        datetime_aggregation_labels_delta, datetime_aggregation_labels_round)}
+
+
+def datetime_floor(datetime, aggregation_type='seconds'):
+    """ Rounds datetime down to previous `aggregation_type` """
+    aggregation_index = (
+        datetime_aggregation_labels_delta.index(aggregation_type))
+    rounding_dict = {"microsecond": 0}
+    for j in range(aggregation_index):
+        rounding_dict[datetime_aggregation_labels_round[j]] = 0
+    return datetime.replace(**rounding_dict) 
+
+
+def make_aggregation_subsets_by_time(
+    df_input,
+    min_column='datetime_min',
+    max_column='datetime',
+    aggregation_type='minutes',
+    aggregation_length=1,
+    min_time=None,
+    max_time=None,
+):
+    """ 
+    Divides dataframe into subsets based on time.
+
+    Minimum aggregation type is minutes.
+
+    Args:
+        df: [Required] A dataframe.
+        min_column: [Optional] Name of column with min time value.
+        max_column: [Optional] Name of column with max time value.
+        aggregation_type: [Optional] Type of aggregation. Must be 
+                          valid input to dateutil.relativedelta.
+        agregation_length: Size of aggregation.
+        min_time: Minimum time to return in agregations.
+        max_time: Maximum time to return in agregations. 
+
+    Returns:
+        A list of dataframes.
+    """
+    # @TODO: generalize for arbitrary aggregation
+    # @TODO: Consider outputing an interable instead of a list
+    df = df_input.copy()
+    df['parsed'] = False
+    df.sort_values(by=[min_column], inplace=True)
+    df['_delta_time'] = df[max_column] - df[min_column]
+
+    delta_time_dict = {aggregation_type: aggregation_length}
+    first_time = df.iloc[0].at[min_column]
+    last_time = df.iloc[-1].at[max_column]
+
+    aggregation_index = (
+        datetime_aggregation_labels_delta.index(aggregation_type))
+    assert aggregation_index > 0
+
+    merge_start_time = last_time - relativedelta(seconds=1)
+    merge_start_time = datetime_floor(
+        merge_start_time, aggregation_type=aggregation_type)
+    result = []
+    while merge_start_time >= first_time - relativedelta(**delta_time_dict):
+        merge_stop_time = merge_start_time + relativedelta(**delta_time_dict)
+        df_mask = ((df[min_column] >= merge_start_time)
+                   & (df[min_column] <= merge_stop_time)
+                   & (df['_delta_time'] <= timedelta(**delta_time_dict)))
+        df_merge = df[df_mask]
+        df.loc[df_mask, 'parsed'] = True
+        if not df_merge.empty:
+            result.append(df_merge)
+            merge_start_time = (
+                merge_start_time - relativedelta(**delta_time_dict))
+        else:
+            merge_start_time = df[df['parsed'] == False].iloc[-1].at[max_column]
+            merge_start_time = merge_start_time - relativedelta(seconds=1)
+            merge_start_time = datetime_floor(
+                merge_start_time, aggregation_type=aggregation_type)
+    return result
+
 
 def prune_test_data(engine):
     # aggregation: min <= time < max 
@@ -86,8 +178,8 @@ def prune_test_data(engine):
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    aggregation_lengths = [120, 120, 48, 60, 24, 10]
-    aggregation_labels = (
+    datetime_aggregation_lengths = [120, 120, 48, 60, 24, 10]
+    datetime_aggregation_labels = (
         ["seconds", "minutes", "hours", "days", "months", "years"])
 
     # load initial data
@@ -101,48 +193,69 @@ def prune_test_data(engine):
         [instance.metadata_list for instance in labelled_distogram_list],
         columns=labelled_distogram_list[0].metadata_labels)
 
-    first_time = df_metadata.iloc[0].at['datetime']
-    last_time = df_metadata.iloc[-1].at['datetime']
-    df_metadata['parsed'] = False
+    # first_time = df_metadata.iloc[0].at['datetime_min']
+    # last_time = df_metadata.iloc[-1].at['datetime'] 
+    # delta_time_dict = {
+    #     datetime_aggregation_labels[aggregation_index]: aggregation_lengths[aggregation_index]}
+    # min_keep_time = last_time - relativedelta(**delta_time_dict)
+
+    aggregation_type = 'minutes'
+    prune_type = datetime_aggregation_labels.index(aggregation_type)
+    last_time = 
+
+    aggregation_subsets = make_aggregation_subsets_by_time(
+        df_metadata,
+        min_column='datetime_min',
+        max_column='datetime',
+        aggregation_type=aggregation_type,
+        aggregation_length=1,
+    )
+
+
+    # df_metadata['__delta_time'] = (
+    #     df_metadata['datetime'] - df_metadata['datetime_min'])
+    # ic(df_metadata['__delta_time'])
+    # ic(type(timedelta(seconds=2)))
+    # ic(df_metadata[df_metadata['__delta_time'] < timedelta(seconds=1)]['__delta_time'])
+    # df_metadata['parsed'] = False
     
     # combine seconds to minutes
     # @TODO: writing time rounding function
-    aggregation_index = 0
-    df_fine = df_metadata[
-        df_metadata['aggregation_type'] == aggregation_labels[aggregation_index]]
-    df_fine.sort_values(by=['datetime_min'], inplace=True)
-    df_fine.reset_index(drop=True, inplace=True)
+    # aggregation_index = 0
+    # df_fine = df_metadata[
+    #     df_metadata['aggregation_type'] == datetime_aggregation_labels[aggregation_index]]
+    # # df_fine.sort_values(by=['datetime_min'], inplace=True)
+    # # df_fine.reset_index(drop=True, inplace=True)
 
-    delta_dict = {
-        aggregation_labels[aggregation_index]: aggregation_lengths[aggregation_index]}
-    min_keep_time = last_time - relativedelta(**delta_dict)
 
-    delta_dict = {aggregation_labels[aggregation_index + 1]: 1}
+    # delta_time_dict = {datetime_aggregation_labels[aggregation_index + 1]: 1}
 
-    merge_stop_time = last_time
-    merge_start_time = merge_stop_time - relativedelta(**delta_dict)
+    # merge_stop_time = last_time
+    # merge_start_time = merge_stop_time - relativedelta(**delta_time_dict)
     # while merge_start_time > first_time:
-    # if True:
-    for i in range(20):
-        merge_start_time = merge_stop_time - relativedelta(**delta_dict)
-        rounding_dict = {"microsecond": 0}
-        for j in range(aggregation_index + 1):
-            rounding_dict[aggregation_labels[j][:-1]] = 0
-        merge_start_time = merge_start_time.replace(**rounding_dict)
-        merge_stop_time = merge_start_time + relativedelta(**delta_dict)
+    # # if True:
+    # #
+    # # for i in range(30):
+    #     # merge_start_time = merge_stop_time - relativedelta(**delta_time_dict)
+    #     rounding_dict = {"microsecond": 0}
+    #     for j in range(aggregation_index + 1):
+    #         rounding_dict[datetime_aggregation_labels[j][:-1]] = 0
+    #     merge_start_time = merge_stop_time - relativedelta(seconds=1)
+    #     merge_start_time = merge_start_time.replace(**rounding_dict)
+    #     merge_stop_time = merge_start_time + relativedelta(**delta_time_dict)
         
-        df_mask = ((df_fine["datetime_min"] >= merge_start_time)
-                   & (df_fine["datetime"] <= merge_stop_time))
-        df_merge = df_fine[df_mask]
-        df_fine.loc[df_mask, "parsed"] = True
-        if not df_merge.empty:
-            merge_stop_time = merge_start_time
-        else:
-            merge_stop_time = df_fine[df_fine["parsed"] == False].iloc[-1].at['datetime_min']
-            merge_stop_time = merge_stop_time + relativedelta(seconds=1)
-            
-        ic(merge_start_time, merge_stop_time)
-        ic(df_merge[["datetime_min", "datetime"]])
+    #     df_mask = ((df_fine["datetime_min"] >= merge_start_time)
+    #                & (df_fine["datetime"] <= merge_stop_time))
+    #     df_merge = df_fine[df_mask]
+    #     df_fine.loc[df_mask, "parsed"] = True
+    #     ic(merge_start_time, merge_stop_time)
+    #     ic(df_merge[["datetime_min", "datetime"]])
+    #     if not df_merge.empty:
+    #         merge_stop_time = merge_start_time
+    #     else:
+    #         merge_stop_time = df_fine[df_fine["parsed"] == False].iloc[-1].at['datetime']
+    # print("done")
+
 
 def publish_pruned_test_data(engine):
     Base.metadata.create_all(engine)
@@ -151,7 +264,7 @@ def publish_pruned_test_data(engine):
     if True:
         print("adding pruned_test data")
         aggregation_lengths = [120, 120, 48, 60, 24, 10]
-        aggregation_labels = (
+        datetime_aggregation_labels = (
             ["seconds", "minutes", "hours", "days", "months", "years"])
         date0 = datetime(2021, 10, 31)
         for i in range(len(AggregationType)):
@@ -162,20 +275,20 @@ def publish_pruned_test_data(engine):
             j_max = 5 * aggregation_lengths[i]
             j_delta = aggregation_lengths[i] // 5
             for j in range(j_min, j_max, j_delta):
-                delta_dict = {aggregation_labels[i]: -j}
-                delta = relativedelta(**delta_dict)
+                delta_time_dict = {datetime_aggregation_labels[i]: -j}
+                delta = relativedelta(**delta_time_dict)
                 date = date0 + delta
-                delta_dict = {aggregation_labels[0]: 1}
-                delta = relativedelta(**delta_dict)
-                date_max = date + delta
+                delta_time_dict = {datetime_aggregation_labels[0]: 1}
+                delta = relativedelta(**delta_time_dict)
+                date_min = date - delta
                 # America/New_York
                 date.replace(tzinfo=zoneinfo.ZoneInfo('Etc/UTC'))
                 h = make_distogram(make_distribution())
                 d = LabelledDistogram(
                     data_source="debug3",
                     variable_name="x",
-                    datetime_min=date,
-                    datetime=date_max,
+                    datetime_min=date_min,
+                    datetime=date,
                     aggregation_type=AggregationType(0).name,
                     temporary_record=False,
                     distogram=h)
@@ -314,7 +427,8 @@ if __name__ == "__main__":
 
     # test(engine)
 #     main(engine)
-    # os.remove("./localdb-2")
-    # publish_pruned_test_data(engine)
-
+#     os.remove("./localdb-2")
+#     publish_pruned_test_data(engine)
+    #
     prune_test_data(engine)
+    print("done")
